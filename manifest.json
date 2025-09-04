@@ -1,11 +1,17 @@
 {
-   "name": "SilentTyping",
+   "name": "AvatarChanger",
    "version": "1.0.0",
-   "description": "Silences your typing indicator.",
+   "description": "Changes your client-side profile picture to that of a specified Discord user ID.",
    "authors": [
       {
-         "name": "eternal",
-         "id": "263689920210534400"
+         "name": "clockwrks",
+         "id": "383296127396610049"
       }
-   ]
+   ],
+   "color": "#000001",
+   "settings": {
+      "id": "userId",
+      "name": "Target User ID",
+      "type": "text"
+   }
 }
