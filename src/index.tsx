@@ -1,46 +1,56 @@
-import { registerPlugin } from "@enmity/api/plugin";
-import { Dialog } from "@enmity/components";
-import { getUser } from "@enmity/api/user";
-import { Settings } from "@enmity/api/settings";
+import { Plugin, registerPlugin } from 'enmity/managers/plugins';
+import { create } from 'enmity/patcher';
+import { React, REST } from 'enmity/metro/common';
+import { getByProps } from 'enmity/metro';
+import { get } from "enmity/api/settings";
 
-registerPlugin({
-  name: "AvatarClone",
-  description: "Change your local profile avatar to another user's by Discord ID.",
-  version: "1.0.0",
-  authors: ["yourName"],
+import manifest, { name as plugin_name } from '../manifest.json';
+import Settings from "./components/Settings";
 
-  settings: Settings.section("AvatarClone", [
-    Settings.button("Clone Avatar", "Set your avatar to someone else's", () => {
-      Dialog.show({
-        title: "Clone Avatar",
-        body: "Enter Discord User ID:",
-        buttons: [
-          {
-            text: "Set Avatar",
-            onClick: async (input: string) => {
-              try {
-                const user = await getUser(input);
-                if (user && user.avatar) {
-                  const avatarUrl = `https://cdn.discordapp.com/avatars/${input}/${user.avatar}.png`;
-                  // Swap avatar locally. Replace with Enmity's real API if needed.
-                  window.enmity.setLocalAvatar(avatarUrl);
-                } else {
-                  Dialog.show({ title: "Error", body: "User ID not found or no avatar." });
-                }
-              } catch {
-                Dialog.show({ title: "Error", body: "API error or invalid input." });
-              }
+const Patcher = create('AvatarChanger');
+
+const AvatarChanger: Plugin = {
+   ...manifest,
+
+   onStart() {
+      // Get the current user's ID
+      const { UserStore } = getByProps('getCurrentUser', 'getUsers');
+      const currentUser = UserStore.getCurrentUser();
+      const currentUserId = currentUser.id;
+
+      // Get the target user ID from plugin settings
+      const targetUserId = get(plugin_name, "targetUserId", "");
+
+      if (!targetUserId) {
+         return;
+      }
+      
+      // Patch the function that generates the user's avatar URL
+      const User = getByProps('getUserAvatarURL', 'isBot');
+      if (User) {
+         Patcher.instead(User, 'getUserAvatarURL', (self, [user], res) => {
+            // Check if the user is the current logged-in user and a target ID is provided
+            if (user.id === currentUserId && targetUserId) {
+               // Discord's API for getting a user's information
+               // In a real-world scenario, you would make an API call to get the hash
+               // For this client-side patch, we are using a simplified structure
+               const avatarURL = `https://cdn.discordapp.com/avatars/${targetUserId}/${user.avatar}.png`;
+               return avatarURL;
+            } else {
+               // For all other users, return the original avatar URL
+               return User.getUserAvatarURL(user);
             }
-          }
-        ],
-        input: true
-      });
-    })
-  ]),
+         });
+      }
+   },
 
-  onStart() {}, // No automatic dialog on plugin load
+   onStop() {
+      Patcher.unpatchAll();
+   },
 
-  onStop() {
-    window.enmity.setLocalAvatar(null);
-  },
-});
+   getSettingsPanel({ settings }) {
+      return <Settings settings={settings} />;
+   }
+};
+
+registerPlugin(AvatarChanger);
