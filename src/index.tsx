@@ -1,29 +1,58 @@
-import { Plugin, registerPlugin } from 'enmity/managers/plugins';
-import { React } from 'enmity/metro/common';
-import { getByProps } from 'enmity/metro';
-import { create } from 'enmity/patcher';
-import manifest from '../manifest.json';
+/**
+ * @name ProfileSwap
+ * @description Locally replace your avatar and name with another user’s.
+ * @version 1.0.0
+ */
 
-import Settings from './components/Settings';
+import { Patcher, Settings } from 'enmity/api'
+import { getModule } from 'enmity/modules'
 
-const Typing = getByProps('startTyping');
-const Patcher = create('silent-typing');
+const UserStore = getModule(m => m.getUser, false)
+const Avatar = getModule(m => m?.default?.displayName === 'Avatar', false)
+const Name = getModule(m => m?.default?.displayName === 'Username', false)
 
-const SilentTyping: Plugin = {
-   ...manifest,
+export default {
+  name: 'ProfileSwap',
 
-   onStart() {
-      Patcher.instead(Typing, 'startTyping', () => { });
-      Patcher.instead(Typing, 'stopTyping', () => { });
-   },
+  onStart() {
+    const getTarget = () => {
+      const id = Settings.get('targetId', '')
+      return UserStore.getUser(id)
+    }
 
-   onStop() {
-      Patcher.unpatchAll();
-   },
+    Patcher.after(Avatar, 'default', (_, args, res) => {
+      const props = args[0]
+      if (props?.userId === UserStore.getCurrentUser().id) {
+        const target = getTarget()
+        if (target?.avatar) {
+          res.props.src = `https://cdn.discordapp.com/avatars/${target.id}/${target.avatar}.png?size=512`
+        }
+      }
+      return res
+    })
 
-   getSettingsPanel({ settings }) {
-      return <Settings settings={settings} />;
-   }
-};
+    Patcher.after(Name, 'default', (_, args, res) => {
+      const props = args[0]
+      if (props?.userId === UserStore.getCurrentUser().id) {
+        const target = getTarget()
+        if (target) {
+          res.props.children = target.username
+        }
+      }
+      return res
+    })
+  },
 
-registerPlugin(SilentTyping);
+  onStop() {
+    Patcher.unpatchAll()
+  },
+
+  settings: [
+    {
+      key: 'targetId',
+      type: 'text',
+      name: 'Target User ID',
+      description: 'Enter the ID of the user to copy.'
+    }
+  ]
+}
