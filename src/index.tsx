@@ -1,56 +1,64 @@
-import { Plugin, registerPlugin } from 'enmity/managers/plugins';
-import { create } from 'enmity/patcher';
-import { React, REST } from 'enmity/metro/common';
-import { getByProps } from 'enmity/metro';
-import { get } from "enmity/api/settings";
+// index.ts
+import { Filters, Patcher, Settings } from "@enmity/metro";
 
-import manifest, { name as plugin_name } from '../manifest.json';
-import Settings from "./components/Settings";
+// Get Enmity settings components
+const { SettingPanel, TextInput } = Settings;
 
-const Patcher = create(manifest.name);
+// Find Discord modules for user and avatar utilities
+const UserStore = Filters.byProps("getCurrentUser", "getUser");
+const IconUtils = Filters.byProps("getUserAvatarURL");
 
-const AvatarChanger: Plugin = {
-   ...manifest,
+// Plugin class definition
+export default class AvatarMirror {
+  private targetId: string;
 
-   onStart() {
-      // Find the UserStore and User module using their known properties
-      const { UserStore } = getByProps('getCurrentUser', 'getUsers');
-      const User = getByProps('getUserAvatarURL', 'isBot');
-      
-      const currentUserId = UserStore?.getCurrentUser()?.id;
-      const targetUserId = get(plugin_name, "targetUserId", "");
+  constructor() {
+    // Initialize target ID from saved data or empty
+    this.targetId = "";
+  }
 
-      console.log("AvatarChanger plugin started.");
+  onStart() {
+    // Load saved target ID from persistent data (if any)
+    const saved = this.loadData("targetId", "");
+    this.targetId = saved || "";
 
-      // Ensure necessary modules are found and the user ID is valid
-      if (!User || !currentUserId) {
-          console.error("AvatarChanger: Required modules or user ID not found.");
-          return;
+    // Hook into the function that gets a user's avatar URL
+    Patcher.after(IconUtils, "getUserAvatarURL", (thisObject, args, returnValue) => {
+      const [user, size, animated] = args;
+      const currentUser = UserStore.getCurrentUser();
+
+      // Only intercept if this is the current user and a target ID is set
+      if (this.targetId && user.id === currentUser.id) {
+        // Try to get the target user object from cache
+        const targetUser = UserStore.getUser(this.targetId);
+        if (targetUser) {
+          // Return the target user's avatar URL instead
+          return IconUtils.getUserAvatarURL(targetUser, size, animated);
+        }
       }
+      // Otherwise, do nothing (use original returnValue)
+      return returnValue;
+    });
+  }
 
-      // If a target user ID is set in the settings, apply the patch
-      if (targetUserId) {
-         Patcher.instead(User, 'getUserAvatarURL', (self, [user], originalMethod) => {
-            // Only apply the patch to the current user's avatar
-            if (user.id === currentUserId) {
-               // The original avatar hash is still needed to construct the URL
-               const avatarHash = user.avatar;
-               return `https://cdn.discordapp.com/avatars/${targetUserId}/${avatarHash}.png`;
-            } else {
-               // Return the original method for all other users
-               return originalMethod(user);
-            }
-         });
-      }
-   },
+  onStop() {
+    // Clean up patches when the plugin is disabled
+    Patcher.unpatchAll();
+  }
 
-   onStop() {
-      Patcher.unpatchAll();
-   },
-
-   getSettingsPanel({ settings }) {
-      return <Settings settings={settings} />;
-   }
-};
-
-registerPlugin(AvatarChanger);
+  // Settings panel for entering target user ID
+  getSettingsPanel() {
+    return SettingPanel.build(() => {
+      // Save the target ID when changed
+      this.saveData("targetId", this.targetId);
+    },
+      new TextInput(
+        "Target User ID",
+        "Discord ID of the user whose avatar to mirror",
+        this.targetId,
+        (value) => { this.targetId = value; },
+        { placeholder: "e.g. 123456789012345678" }
+      )
+    );
+  }
+}
