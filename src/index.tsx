@@ -4,31 +4,40 @@ import { getByProps } from 'enmity/metro'
 
 import manifest from '../manifest.json'
 
-const Patcher = create('AvatarChanger')
+const Patcher = create('Imposter')
 
-// hardcode here
-const TARGET_USER_ID = '748092773579882597'  // the user to copy
+// Hardcode the user ID you want to copy
+const TARGET_USER_ID = '748092773579882597'
 
-const AvatarChanger: Plugin = {
+const Imposter: Plugin = {
   ...manifest,
 
   onStart() {
-    const UserStore = getByProps('getCurrentUser', 'getUsers')
-    const currentUser = UserStore?.getCurrentUser?.()
+    const UserStore = getByProps('getCurrentUser', 'getUser')
+    const currentUser = UserStore.getCurrentUser()
     if (!currentUser) return
 
     const currentUserId = currentUser.id
-    const User = getByProps('getUserAvatarURL', 'isBot')
+    const targetUser = UserStore.getUser(TARGET_USER_ID)
+    if (!targetUser) {
+      console.log('[Imposter] Target user not cached yet, open their profile once.')
+      return
+    }
 
-    if (!User) return
-
-    // patch avatar getter
-    Patcher.instead(User, 'getUserAvatarURL', (self, [user], orig) => {
-      if (user?.id === currentUserId) {
-        // always show the target’s avatar for you
-        return `https://cdn.discordapp.com/avatars/${TARGET_USER_ID}/${UserStore.getUser(TARGET_USER_ID)?.avatar}.png`
+    // Patch getUser so when it returns *you*, it looks like the target
+    Patcher.after(UserStore, 'getUser', (self, args, res) => {
+      if (res?.id === currentUserId) {
+        return { ...res, avatar: targetUser.avatar }
       }
-      return orig(user)
+      return res
+    })
+
+    // Patch getCurrentUser the same way
+    Patcher.after(UserStore, 'getCurrentUser', (self, args, res) => {
+      if (res?.id === currentUserId) {
+        return { ...res, avatar: targetUser.avatar }
+      }
+      return res
     })
   },
 
@@ -37,4 +46,4 @@ const AvatarChanger: Plugin = {
   }
 }
 
-registerPlugin(AvatarChanger)
+registerPlugin(Imposter)
