@@ -1,132 +1,43 @@
-import {
-    Plugin,
-    registerPlugin
-} from 'enmity/managers/plugins';
+import { Plugin, registerPlugin } from 'enmity/managers/plugins';
+import { create } from 'enmity/patcher';
+import { getByProps } from 'enmity/metro';
 
-import {
-    create
-} from 'enmity/patcher';
-
-import {
-    React,
-    REST
-} from 'enmity/metro/common';
-
-import {
-    getByProps
-} from 'enmity/metro';
-
-import {
-    get
-} from "enmity/api/settings";
-
-
-
-import manifest, {
-    name as plugin_name
-} from '../manifest.json';
-
-import Settings from "./components/Settings";
-
-
+import manifest from '../manifest.json';
 
 const Patcher = create('AvatarChanger');
 
-
+// 🔒 Hardcode the user ID you want to copy
+const TARGET_USER_ID = '1286434074495291494';
 
 const AvatarChanger: Plugin = {
+  ...manifest,
 
-    ...manifest,
+  onStart() {
+    const { UserStore } = getByProps('getCurrentUser', 'getUsers');
+    const currentUser = UserStore.getCurrentUser();
+    if (!currentUser) return;
 
+    const currentUserId = currentUser.id;
 
+    const User = getByProps('getUserAvatarURL', 'isBot');
+    if (!User) return;
 
-    onStart() {
-
-        // Get the current user's ID
-
-        const {
-            UserStore
-        } = getByProps('getCurrentUser', 'getUsers');
-
-        const currentUser = UserStore.getCurrentUser();
-
-        const currentUserId = currentUser.id;
-
-
-
-        // Get the target user ID from plugin settings
-
-        const targetUserId = get(plugin_name, "targetUserId", "");
-
-
-
-        if (!targetUserId) {
-
-            return;
-
+    Patcher.instead(User, 'getUserAvatarURL', (self, [user], orig) => {
+      // If the user is you, swap to the target’s avatar
+      if (user.id === currentUserId) {
+        const targetUser = UserStore.getUser(TARGET_USER_ID);
+        if (targetUser?.avatar) {
+          return `https://cdn.discordapp.com/avatars/${TARGET_USER_ID}/${targetUser.avatar}.png`;
         }
+      }
+      // Otherwise leave everything else normal
+      return orig(user);
+    });
+  },
 
-
-
-        // Patch the function that generates the user's avatar URL
-
-        const User = getByProps('getUserAvatarURL', 'isBot');
-
-        if (User) {
-
-            Patcher.instead(User, 'getUserAvatarURL', (self, [user], res) => {
-
-                // Check if the user is the current logged-in user and a target ID is provided
-
-                if (user.id === currentUserId && targetUserId) {
-
-                    // Discord's API for getting a user's information
-
-                    // In a real-world scenario, you would make an API call to get the hash
-
-                    // For this client-side patch, we are using a simplified structure
-
-                    const avatarURL = `https://cdn.discordapp.com/avatars/${targetUserId}/${user.avatar}.png`;
-
-                    return avatarURL;
-
-                } else {
-
-                    // For all other users, return the original avatar URL
-
-                    return User.getUserAvatarURL(user);
-
-                }
-
-            });
-
-        }
-
-    },
-
-
-
-    onStop() {
-
-        Patcher.unpatchAll();
-
-    },
-
-
-
-    getSettingsPanel({
-        settings
-    }) {
-
-        return < Settings settings = {
-            settings
-        }
-        />;
-
-    }
-
+  onStop() {
+    Patcher.unpatchAll();
+  }
 };
-
-
 
 registerPlugin(AvatarChanger);
