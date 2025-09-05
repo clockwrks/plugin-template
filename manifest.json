@@ -4,13 +4,13 @@
    "description": "Changes your client-side profile picture to that of a specified Discord user ID.",
    "authors": [
       {
-         "name": "clockwrks",
-         "id": "383296127396610049"
+         "name": "SerStars",
+         "id": "861631850681729045"
       }
    ],
    "color": "#000001",
    "settings": {
-      "id": "userId",
+      "id": "targetUserId",
       "name": "Target User ID",
       "type": "text"
    }
