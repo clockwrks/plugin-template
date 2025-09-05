@@ -7,38 +7,36 @@ import { get } from "enmity/api/settings";
 import manifest, { name as plugin_name } from '../manifest.json';
 import Settings from "./components/Settings";
 
-const Patcher = create('AvatarChanger');
+const Patcher = create(manifest.name);
 
 const AvatarChanger: Plugin = {
    ...manifest,
 
    onStart() {
-      // Get the current user's ID
+      // Find the UserStore and User module using their known properties
       const { UserStore } = getByProps('getCurrentUser', 'getUsers');
-      const currentUser = UserStore.getCurrentUser();
-      const currentUserId = currentUser.id;
-
-      // Get the target user ID from plugin settings
+      const User = getByProps('getUserAvatarURL', 'isBot');
+      
+      const currentUserId = UserStore?.getCurrentUser()?.id;
       const targetUserId = get(plugin_name, "targetUserId", "");
 
-      if (!targetUserId) {
-         return;
+      // Ensure necessary modules are found and the user ID is valid
+      if (!User || !currentUserId) {
+          console.error("AvatarChanger: Required modules or user ID not found.");
+          return;
       }
-      
-      // Patch the function that generates the user's avatar URL
-      const User = getByProps('getUserAvatarURL', 'isBot');
-      if (User) {
-         Patcher.instead(User, 'getUserAvatarURL', (self, [user], res) => {
-            // Check if the user is the current logged-in user and a target ID is provided
-            if (user.id === currentUserId && targetUserId) {
-               // Discord's API for getting a user's information
-               // In a real-world scenario, you would make an API call to get the hash
-               // For this client-side patch, we are using a simplified structure
-               const avatarURL = `https://cdn.discordapp.com/avatars/${targetUserId}/${user.avatar}.png`;
-               return avatarURL;
+
+      // If a target user ID is set in the settings, apply the patch
+      if (targetUserId) {
+         Patcher.instead(User, 'getUserAvatarURL', (self, [user], originalMethod) => {
+            // Only apply the patch to the current user's avatar
+            if (user.id === currentUserId) {
+               // The original avatar hash is still needed to construct the URL
+               const avatarHash = user.avatar;
+               return `https://cdn.discordapp.com/avatars/${targetUserId}/${avatarHash}.png`;
             } else {
-               // For all other users, return the original avatar URL
-               return User.getUserAvatarURL(user);
+               // Return the original method for all other users
+               return originalMethod(user);
             }
          });
       }
