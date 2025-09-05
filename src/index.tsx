@@ -20,6 +20,8 @@ const AvatarChanger: Plugin = {
       const currentUserId = UserStore?.getCurrentUser()?.id;
       const targetUserId = get(plugin_name, "targetUserId", "");
 
+      console.log("AvatarChanger plugin started.");
+
       // Ensure necessary modules are found and the user ID is valid
       if (!User || !currentUserId) {
           console.error("AvatarChanger: Required modules or user ID not found.");
