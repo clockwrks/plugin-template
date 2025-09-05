@@ -1,5 +1,6 @@
 import { FormRow, FormSection, FormInput, ScrollView, Text } from 'enmity/components';
 import { Constants, StyleSheet, Linking } from 'enmity/metro/common';
+import { useTheme } from 'enmity/api/common';
 // @ts-ignore
 import { version } from '../../manifest.json';
 import { getIDByName } from "enmity/api/assets";
@@ -7,7 +8,9 @@ import { getIDByName } from "enmity/api/assets";
 const GitHubIcon = getIDByName('img_account_sync_github_white');
 
 export default ({ settings }: { settings: any }) => {
-   const styles = StyleSheet.createThemedStyleSheet({
+   const { theme } = useTheme();
+
+   const styles = StyleSheet.create({
       footer: {
          color: Constants.ThemeColorMap.HEADER_SECONDARY,
          textAlign: 'center',
@@ -15,7 +18,7 @@ export default ({ settings }: { settings: any }) => {
          paddingBottom: 20
       }
    });
-
+   
    return (
       <ScrollView>
          <FormSection title="AVATAR CHANGER SETTINGS">
