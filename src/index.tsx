@@ -4,34 +4,41 @@ import { getByProps } from 'enmity/metro';
 
 import manifest from '../manifest.json';
 
-const Patcher = create('AvatarChanger');
+const Patcher = create('UsernameChanger');
 
 // 🔒 Hardcode the user ID you want to copy
 const TARGET_USER_ID = '1286434074495291494';
 
-const AvatarChanger: Plugin = {
+const UsernameChanger: Plugin = {
   ...manifest,
 
   onStart() {
-    const { UserStore } = getByProps('getCurrentUser', 'getUsers');
+    const { UserStore } = getByProps('getCurrentUser', 'getUser');
     const currentUser = UserStore.getCurrentUser();
     if (!currentUser) return;
 
     const currentUserId = currentUser.id;
+    const targetUser = UserStore.getUser(TARGET_USER_ID);
 
-    const User = getByProps('getUserAvatarURL', 'isBot');
-    if (!User) return;
+    if (!targetUser) {
+      console.log('[UsernameChanger] Target user not cached. Open their profile first.');
+      return;
+    }
 
-    Patcher.instead(User, 'getUserAvatarURL', (self, [user], orig) => {
-      // If the user is you, swap to the target’s avatar
-      if (user.id === currentUserId) {
-        const targetUser = UserStore.getUser(TARGET_USER_ID);
-        if (targetUser?.avatar) {
-          return `https://cdn.discordapp.com/avatars/${TARGET_USER_ID}/${targetUser.avatar}.png`;
-        }
+    // Patch getUser so your user object has the target’s username
+    Patcher.after(UserStore, 'getUser', (self, args, res) => {
+      if (res?.id === currentUserId) {
+        return { ...res, username: targetUser.username };
       }
-      // Otherwise leave everything else normal
-      return orig(user);
+      return res;
+    });
+
+    // Patch getCurrentUser the same way
+    Patcher.after(UserStore, 'getCurrentUser', (self, args, res) => {
+      if (res?.id === currentUserId) {
+        return { ...res, username: targetUser.username };
+      }
+      return res;
     });
   },
 
@@ -40,4 +47,4 @@ const AvatarChanger: Plugin = {
   }
 };
 
-registerPlugin(AvatarChanger);
+registerPlugin(UsernameChanger);
