@@ -6,65 +6,58 @@ import manifest from '../manifest.json';
 const Patcher = create('FullProfileSpoofer');
 
 // Hardcode your spoofed profile values here
-const CUSTOM_NAME = '🔥SPOOFED🔥';
-const CUSTOM_BIO = 'This is a client-side spoofed profile';
-const CUSTOM_AVATAR_HASH = 'abcdef1234567890abcdef1234567890'; // Discord avatar hash (just a placeholder)
-const CUSTOM_BANNER_HASH = '1234567890abcdef1234567890abcdef'; // Discord banner hash (placeholder)
+const CUSTOM_NAME = '50cczip';
+const CUSTOM_BIO = 'https://nohello.net/\nMy DMs are always open\nDo NOT DM me for\n- Ingame suggestions\n- Discord suggestions\n- Bug reports';
+const CUSTOM_AVATAR_HASH = '64d95fd6056fd65505ac10456b3ebc30'; // Discord avatar hash
+const CUSTOM_BANNER_HASH = 'f1c1fb11dd06c143e9761c837b610041'; // Discord banner hash
 
 const FullProfileSpoofer: Plugin = {
   ...manifest,
 
   onStart() {
+    // Patch username, avatar, banner
     const UserStore = getByProps('getCurrentUser', 'getUser');
-    if (!UserStore) {
-      console.log('[FullProfileSpoofer] Failed to find UserStore.');
-      return;
-    }
-
+    if (!UserStore) return;
     const currentUser = UserStore.getCurrentUser();
-    if (!currentUser) {
-      console.log('[FullProfileSpoofer] Failed to get current user.');
-      return;
-    }
-
+    if (!currentUser) return;
     const currentUserId = currentUser.id;
 
-    console.log('[FullProfileSpoofer] Loaded. Spoofing user ID:', currentUserId);
-
-    // Patch getUser globally
     Patcher.after(UserStore, 'getUser', (self, [id], res) => {
       if (res && id === currentUserId) {
         res.username = CUSTOM_NAME;
-        res.bio = CUSTOM_BIO;
         res.avatar = CUSTOM_AVATAR_HASH;
         res.banner = CUSTOM_BANNER_HASH;
       }
       return res;
     });
 
-    // Patch getCurrentUser
     Patcher.after(UserStore, 'getCurrentUser', (self, args, res) => {
       if (res && res.id === currentUserId) {
         res.username = CUSTOM_NAME;
-        res.bio = CUSTOM_BIO;
         res.avatar = CUSTOM_AVATAR_HASH;
         res.banner = CUSTOM_BANNER_HASH;
       }
       return res;
     });
 
-    // Immediately update cached object
     currentUser.username = CUSTOM_NAME;
-    currentUser.bio = CUSTOM_BIO;
     currentUser.avatar = CUSTOM_AVATAR_HASH;
     currentUser.banner = CUSTOM_BANNER_HASH;
 
-    console.log('[FullProfileSpoofer] Spoofing applied.');
+    // Patch bio via UserProfileStore
+    const UserProfileStore = getByProps('getUserProfile', 'getProfiles');
+    if (UserProfileStore) {
+      Patcher.after(UserProfileStore, 'getUserProfile', (self, [id], res) => {
+        if (res && id === currentUserId) {
+          res.bio = CUSTOM_BIO;
+        }
+        return res;
+      });
+    }
   },
 
   onStop() {
     Patcher.unpatchAll();
-    console.log('[FullProfileSpoofer] Stopped, patches removed.');
   }
 };
 
