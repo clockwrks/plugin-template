@@ -15,10 +15,10 @@ Do NOT DM me for
 - Discord suggestions
 - Bug reports`;
 
-// Replace with correct hash from Discord CDN
+// Avatar & banner
 const CUSTOM_AVATAR_HASH = '64d95fd6056fd65505ac10456b3ebc30';
 const CUSTOM_BANNER_HASH = 'f1c1fb11dd06c143e9761c837b610041';
-const AVATAR_IS_GIF = true; // set to true if it's an animated GIF
+const AVATAR_IS_GIF = false; // set true if it's a GIF
 
 const FullProfileSpoofer: Plugin = {
   ...manifest,
@@ -26,15 +26,17 @@ const FullProfileSpoofer: Plugin = {
   onStart() {
     const UserStore = getByProps('getCurrentUser', 'getUser');
     if (!UserStore) return;
+
     const currentUser = UserStore.getCurrentUser();
     if (!currentUser) return;
+
     const currentUserId = currentUser.id;
 
     const getAvatarUrl = (userId: string, hash: string) =>
       `https://cdn.discordapp.com/avatars/${userId}/${hash}${AVATAR_IS_GIF ? '.gif' : '.png'}?size=1024`;
 
-    // Username, avatar, banner
-    Patcher.after(UserStore, 'getUser', (self, [id], res) => {
+    // Patch username/avatar/banner globally
+    Patcher.after(UserStore, 'getUser', (_self, [id], res) => {
       if (res && id === currentUserId) {
         res.username = CUSTOM_NAME;
         res.avatar = CUSTOM_AVATAR_HASH;
@@ -44,7 +46,7 @@ const FullProfileSpoofer: Plugin = {
       return res;
     });
 
-    Patcher.after(UserStore, 'getCurrentUser', (self, args, res) => {
+    Patcher.after(UserStore, 'getCurrentUser', (_self, args, res) => {
       if (res && res.id === currentUserId) {
         res.username = CUSTOM_NAME;
         res.avatar = CUSTOM_AVATAR_HASH;
@@ -59,10 +61,10 @@ const FullProfileSpoofer: Plugin = {
     currentUser.banner = CUSTOM_BANNER_HASH;
     currentUser.getAvatarURL = () => getAvatarUrl(currentUserId, CUSTOM_AVATAR_HASH);
 
-    // Bio / About Me
+    // Patch bio/About Me
     const UserProfileStore = getByProps('getUserProfile', 'getProfiles');
     if (UserProfileStore) {
-      Patcher.after(UserProfileStore, 'getUserProfile', (self, [id], res) => {
+      Patcher.after(UserProfileStore, 'getUserProfile', (_self, [id], res) => {
         if (res && id === currentUserId) {
           res.bio = CUSTOM_BIO;
         }
@@ -70,20 +72,36 @@ const FullProfileSpoofer: Plugin = {
       });
     }
 
-    // Display name / nickname
+    // Patch server nickname/display name
     const GuildMemberStore = getByProps('getMember', 'getMembers');
     if (GuildMemberStore) {
-      Patcher.after(GuildMemberStore, 'getMember', (self, [guildId, userId], res) => {
+      Patcher.after(GuildMemberStore, 'getMember', (_self, [guildId, userId], res) => {
         if (res && userId === currentUserId) {
           res.nick = CUSTOM_NICK;
         }
         return res;
       });
     }
+
+    // Fake Nitro for client-side preview (optional)
+    const EditUserProfileBanner = getByProps('default', 'EditUserProfileBanner');
+    if (EditUserProfileBanner) {
+      Patcher.instead(EditUserProfileBanner, 'default', (_self, args, orig) => {
+        const user = args[0].user;
+        const premiumType = user.premiumType;
+        user.premiumType = 2; // pretend to have Nitro
+        const result = orig.apply(_self, args);
+        user.premiumType = premiumType;
+        return result;
+      });
+    }
+
+    console.log('[FullProfileSpoofer] Spoofing applied.');
   },
 
   onStop() {
     Patcher.unpatchAll();
+    console.log('[FullProfileSpoofer] Stopped.');
   }
 };
 
