@@ -1,16 +1,26 @@
 import { Plugin, registerPlugin } from 'enmity/managers/plugins';
 import { create } from 'enmity/patcher';
-import { getByProps, React } from 'enmity/metro';
-import { REST } from 'enmity/metro/common';
-import { get, set } from 'enmity/api/settings';
+import { getByProps } from 'enmity/metro';
 import manifest from '../manifest.json';
 
-const Patcher = create('IDProfileSpoofer');
+const Patcher = create('FullProfileSpoofer');
 
-// Hardcoded target ID here (you can later make it a setting)
-const TARGET_USER_ID = '1286434074495291494';
+// Your spoofed values
+const CUSTOM_NAME = '50cczip';
+const CUSTOM_NICK = '50cczip';
+const CUSTOM_BIO = `https://nohello.net/
+My DMs are always open
+Do NOT DM me for
+- Ingame suggestions
+- Discord suggestions
+- Bug reports`;
 
-const IDProfileSpoofer: Plugin = {
+// Avatar & banner
+const CUSTOM_AVATAR_HASH = '64d95fd6056fd65505ac10456b3ebc30';
+const CUSTOM_BANNER_HASH = 'f1c1fb11dd06c143e9761c837b610041';
+const AVATAR_IS_GIF = false; // set true if it's a GIF
+
+const FullProfileSpoofer: Plugin = {
   ...manifest,
 
   onStart() {
@@ -19,75 +29,80 @@ const IDProfileSpoofer: Plugin = {
 
     const currentUser = UserStore.getCurrentUser();
     if (!currentUser) return;
+
     const currentUserId = currentUser.id;
 
-    const getAvatarUrl = (userId: string, hash: string, isGif: boolean) =>
-      `https://cdn.discordapp.com/avatars/${userId}/${hash}${isGif ? '.gif' : '.png'}?size=1024`;
+    const getAvatarUrl = (userId: string, hash: string) =>
+      `https://cdn.discordapp.com/avatars/${userId}/${hash}${AVATAR_IS_GIF ? '.gif' : '.png'}?size=1024`;
 
-    // Fetch target user via REST
-    REST.getUser(TARGET_USER_ID).then((targetUser: any) => {
-      const targetAvatarHash = targetUser.avatar;
-      const targetBannerHash = targetUser.banner;
-      const targetName = targetUser.username;
-
-      // Patch UserStore
-      Patcher.after(UserStore, 'getUser', (_self, [id], res) => {
-        if (res && id === currentUserId) {
-          res.username = targetName;
-          res.avatar = targetAvatarHash;
-          res.banner = targetBannerHash;
-          res.getAvatarURL = () => getAvatarUrl(TARGET_USER_ID, targetAvatarHash, targetAvatarHash?.startsWith('a_'));
-        }
-        return res;
-      });
-
-      Patcher.after(UserStore, 'getCurrentUser', (_self, args, res) => {
-        if (res && res.id === currentUserId) {
-          res.username = targetName;
-          res.avatar = targetAvatarHash;
-          res.banner = targetBannerHash;
-          res.getAvatarURL = () => getAvatarUrl(TARGET_USER_ID, targetAvatarHash, targetAvatarHash?.startsWith('a_'));
-        }
-        return res;
-      });
-
-      currentUser.username = targetName;
-      currentUser.avatar = targetAvatarHash;
-      currentUser.banner = targetBannerHash;
-      currentUser.getAvatarURL = () => getAvatarUrl(TARGET_USER_ID, targetAvatarHash, targetAvatarHash?.startsWith('a_'));
-
-      // Patch bio/About Me
-      const UserProfileStore = getByProps('getUserProfile', 'getProfiles');
-      if (UserProfileStore) {
-        Patcher.after(UserProfileStore, 'getUserProfile', (_self, [id], res) => {
-          if (res && id === currentUserId) {
-            res.bio = targetUser.bio || '';
-          }
-          return res;
-        });
+    // Patch username/avatar/banner globally
+    Patcher.after(UserStore, 'getUser', (_self, [id], res) => {
+      if (res && id === currentUserId) {
+        res.username = CUSTOM_NAME;
+        res.avatar = CUSTOM_AVATAR_HASH;
+        res.banner = CUSTOM_BANNER_HASH;
+        res.getAvatarURL = () => getAvatarUrl(currentUserId, CUSTOM_AVATAR_HASH);
       }
-
-      // Patch nickname/display name
-      const GuildMemberStore = getByProps('getMember', 'getMembers');
-      if (GuildMemberStore) {
-        Patcher.after(GuildMemberStore, 'getMember', (_self, [guildId, userId], res) => {
-          if (res && userId === currentUserId) {
-            res.nick = targetName;
-          }
-          return res;
-        });
-      }
-
-      console.log('[IDProfileSpoofer] Spoofing applied for user ID', TARGET_USER_ID);
-    }).catch((err) => {
-      console.error('[IDProfileSpoofer] Failed to fetch target user:', err);
+      return res;
     });
+
+    Patcher.after(UserStore, 'getCurrentUser', (_self, args, res) => {
+      if (res && res.id === currentUserId) {
+        res.username = CUSTOM_NAME;
+        res.avatar = CUSTOM_AVATAR_HASH;
+        res.banner = CUSTOM_BANNER_HASH;
+        res.getAvatarURL = () => getAvatarUrl(currentUserId, CUSTOM_AVATAR_HASH);
+      }
+      return res;
+    });
+
+    currentUser.username = CUSTOM_NAME;
+    currentUser.avatar = CUSTOM_AVATAR_HASH;
+    currentUser.banner = CUSTOM_BANNER_HASH;
+    currentUser.getAvatarURL = () => getAvatarUrl(currentUserId, CUSTOM_AVATAR_HASH);
+
+    // Patch bio/About Me
+    const UserProfileStore = getByProps('getUserProfile', 'getProfiles');
+    if (UserProfileStore) {
+      Patcher.after(UserProfileStore, 'getUserProfile', (_self, [id], res) => {
+        if (res && id === currentUserId) {
+          res.bio = CUSTOM_BIO;
+        }
+        return res;
+      });
+    }
+
+    // Patch server nickname/display name
+    const GuildMemberStore = getByProps('getMember', 'getMembers');
+    if (GuildMemberStore) {
+      Patcher.after(GuildMemberStore, 'getMember', (_self, [guildId, userId], res) => {
+        if (res && userId === currentUserId) {
+          res.nick = CUSTOM_NICK;
+        }
+        return res;
+      });
+    }
+
+    // Fake Nitro for client-side preview (optional)
+    const EditUserProfileBanner = getByProps('default', 'EditUserProfileBanner');
+    if (EditUserProfileBanner) {
+      Patcher.instead(EditUserProfileBanner, 'default', (_self, args, orig) => {
+        const user = args[0].user;
+        const premiumType = user.premiumType;
+        user.premiumType = 2; // pretend to have Nitro
+        const result = orig.apply(_self, args);
+        user.premiumType = premiumType;
+        return result;
+      });
+    }
+
+    console.log('[FullProfileSpoofer] Spoofing applied.');
   },
 
   onStop() {
     Patcher.unpatchAll();
-    console.log('[IDProfileSpoofer] Stopped.');
+    console.log('[FullProfileSpoofer] Stopped.');
   }
 };
 
-registerPlugin(IDProfileSpoofer);
+registerPlugin(FullProfileSpoofer);
