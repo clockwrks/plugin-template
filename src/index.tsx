@@ -6,7 +6,7 @@ import manifest from '../manifest.json';
 
 const Patcher = create('UsernameChanger');
 
-// 🔒 Hardcode the values you want
+// 🔒 Hardcode the username you want to see
 const CUSTOM_USERNAME = 'BetterMe';
 
 const UsernameChanger: Plugin = {
@@ -15,7 +15,6 @@ const UsernameChanger: Plugin = {
   onStart() {
     const { UserStore } = getByProps('getCurrentUser', 'getUser');
     const currentUser = UserStore.getCurrentUser();
-    console.log(currentUser)
     if (!currentUser) return;
 
     const currentUserId = currentUser.id;
@@ -23,7 +22,7 @@ const UsernameChanger: Plugin = {
     // Patch getUser
     Patcher.after(UserStore, 'getUser', (self, args, res) => {
       if (res?.id === currentUserId) {
-        return { ...res, username: CUSTOM_USERNAME };
+        res.username = CUSTOM_USERNAME; // mutate directly
       }
       return res;
     });
@@ -31,10 +30,13 @@ const UsernameChanger: Plugin = {
     // Patch getCurrentUser
     Patcher.after(UserStore, 'getCurrentUser', (self, args, res) => {
       if (res?.id === currentUserId) {
-        return { ...res, username: CUSTOM_USERNAME };
+        res.username = CUSTOM_USERNAME; // mutate directly
       }
       return res;
     });
+
+    // Also immediately update the cached object
+    currentUser.username = CUSTOM_USERNAME;
   },
 
   onStop() {
