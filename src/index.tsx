@@ -1,43 +1,41 @@
-import { Plugin, registerPlugin } from 'enmity/managers/plugins'
-import { create } from 'enmity/patcher'
-import { getByProps } from 'enmity/metro'
-import manifest from '../manifest.json'
+import { Plugin, registerPlugin } from 'enmity/managers/plugins';
+import { create } from 'enmity/patcher';
+import { getByProps } from 'enmity/metro';
 
-const Patcher = create('ProfileSpoofer')
+import manifest from '../manifest.json';
 
-// Hardcoded custom profile
-const CUSTOM_NAME = 'CoolerMe'
-const CUSTOM_ABOUT = 'This is my fake About Me 😎'
+const Patcher = create('ProfileSpoofer');
+
+// Customize here
+const CUSTOM_NAME = 'FakeClock';
+const CUSTOM_ABOUT = 'This is a spoofed about me 🚨';
 
 const ProfileSpoofer: Plugin = {
   ...manifest,
 
   onStart() {
-    const { UserStore } = getByProps('getCurrentUser', 'getUser')
-    const currentUser = UserStore.getCurrentUser()
-    if (!currentUser) return
-    const currentUserId = currentUser.id
+    const { UserStore } = getByProps('getUser', 'getCurrentUser');
+    const currentUser = UserStore.getCurrentUser();
+    if (!currentUser) return;
 
-    // Patch getUser
+    const currentUserId = currentUser.id;
+
+    // Patch getUser globally
     Patcher.after(UserStore, 'getUser', (self, [id], res) => {
-      if (res?.id === currentUserId) {
-        return { ...res, username: CUSTOM_NAME, bio: CUSTOM_ABOUT }
+      if (res && id === currentUserId) {
+        return {
+          ...res,
+          username: CUSTOM_NAME,
+          bio: CUSTOM_ABOUT,
+        };
       }
-      return res
-    })
-
-    // Patch getCurrentUser
-    Patcher.after(UserStore, 'getCurrentUser', (self, args, res) => {
-      if (res?.id === currentUserId) {
-        return { ...res, username: CUSTOM_NAME, bio: CUSTOM_ABOUT }
-      }
-      return res
-    })
+      return res;
+    });
   },
 
   onStop() {
-    Patcher.unpatchAll()
-  }
-}
+    Patcher.unpatchAll();
+  },
+};
 
-registerPlugin(ProfileSpoofer)
+registerPlugin(ProfileSpoofer);
