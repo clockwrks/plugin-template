@@ -1,47 +1,58 @@
 import { Plugin, registerPlugin } from 'enmity/managers/plugins';
 import { create } from 'enmity/patcher';
-import { getByProps } from 'enmity/metro';
-
+import { React } from 'enmity/metro/common';
 import manifest from '../manifest.json';
 
-const Patcher = create('UsernameChanger');
+const Patcher = create('NameReplacer');
 
-// 🔒 Hardcode the username you want to see
-const CUSTOM_USERNAME = 'BetterMe';
+// Edit these
+const TARGET_STRING = 'clockwrks';           // exact string to replace
+const REPLACEMENT = 'YourCustomName';        // what you want to show instead
+const WATERMARK = ' [LOCAL SPOOF]';          // kept to avoid misuse
 
-const UsernameChanger: Plugin = {
+const NameReplacer: Plugin = {
   ...manifest,
 
   onStart() {
-    const { UserStore } = getByProps('getCurrentUser', 'getUser');
-    const currentUser = UserStore.getCurrentUser();
-    if (!currentUser) return;
+    try {
+      Patcher.instead(React, 'createElement', (self, args: any[], orig: Function) => {
+        try {
+          const [type, props, ...children] = args;
 
-    const currentUserId = currentUser.id;
+          const replaceNode = (node: any): any => {
+            if (typeof node === 'string') {
+              if (node === TARGET_STRING) return REPLACEMENT + WATERMARK;
+              if (node.includes(TARGET_STRING)) return node.split(TARGET_STRING).join(REPLACEMENT + WATERMARK);
+              return node;
+            }
+            if (Array.isArray(node)) return node.map(replaceNode);
+            // leave React elements / objects alone — their children will be processed when their createElement call runs
+            return node;
+          };
 
-    // Patch getUser
-    Patcher.after(UserStore, 'getUser', (self, args, res) => {
-      if (res?.id === currentUserId) {
-        res.username = CUSTOM_USERNAME; // mutate directly
-      }
-      return res;
-    });
+          const newProps = props ? { ...props } : props;
+          if (newProps && newProps.children !== undefined) {
+            newProps.children = replaceNode(newProps.children);
+          }
 
-    // Patch getCurrentUser
-    Patcher.after(UserStore, 'getCurrentUser', (self, args, res) => {
-      if (res?.id === currentUserId) {
-        res.username = CUSTOM_USERNAME; // mutate directly
-      }
-      return res;
-    });
+          const newChildren = children.map(replaceNode);
+          return orig.apply(self, [type, newProps, ...newChildren]);
+        } catch (innerErr) {
+          return orig.apply(self, args);
+        }
+      });
 
-    // Also immediately update the cached object
-    currentUser.username = CUSTOM_USERNAME;
+      // small debug message (remove if you want)
+      console.log('[NameReplacer] started - replacing', TARGET_STRING, '→', REPLACEMENT + WATERMARK);
+    } catch (err) {
+      console.error('[NameReplacer] failed to patch React.createElement', err);
+    }
   },
 
   onStop() {
-    Patcher.unpatchAll();
+    Patcher.unpatchAll('NameReplacer');
+    console.log('[NameReplacer] stopped');
   }
 };
 
-registerPlugin(UsernameChanger);
+registerPlugin(NameReplacer);
