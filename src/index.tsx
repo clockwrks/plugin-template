@@ -3,28 +3,35 @@ import { create } from 'enmity/patcher'
 import { getByProps } from 'enmity/metro'
 import manifest from '../manifest.json'
 
-const Patcher = create('MessageRewriter')
+const Patcher = create('ProfileSpoofer')
 
-// trigger word and replacement
-const TRIGGER = '!clock'
-const REPLACEMENT = 'clock'
+// Hardcoded custom profile
+const CUSTOM_NAME = 'CoolerMe'
+const CUSTOM_ABOUT = 'This is my fake About Me 😎'
 
-const MessageRewriter: Plugin = {
+const ProfileSpoofer: Plugin = {
   ...manifest,
 
   onStart() {
-    const MessageActions = getByProps('sendMessage', 'editMessage')
-    if (!MessageActions) return
+    const { UserStore } = getByProps('getCurrentUser', 'getUser')
+    const currentUser = UserStore.getCurrentUser()
+    if (!currentUser) return
+    const currentUserId = currentUser.id
 
-    Patcher.before(MessageActions, 'sendMessage', (self, args) => {
-      try {
-        const [channelId, message] = args
-        if (message?.content?.startsWith(TRIGGER)) {
-          message.content = REPLACEMENT
-        }
-      } catch (err) {
-        console.error('[MessageRewriter] error:', err)
+    // Patch getUser
+    Patcher.after(UserStore, 'getUser', (self, [id], res) => {
+      if (res?.id === currentUserId) {
+        return { ...res, username: CUSTOM_NAME, bio: CUSTOM_ABOUT }
       }
+      return res
+    })
+
+    // Patch getCurrentUser
+    Patcher.after(UserStore, 'getCurrentUser', (self, args, res) => {
+      if (res?.id === currentUserId) {
+        return { ...res, username: CUSTOM_NAME, bio: CUSTOM_ABOUT }
+      }
+      return res
     })
   },
 
@@ -33,4 +40,4 @@ const MessageRewriter: Plugin = {
   }
 }
 
-registerPlugin(MessageRewriter)
+registerPlugin(ProfileSpoofer)
