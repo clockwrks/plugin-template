@@ -1,126 +1,36 @@
-import {
-    FormRow,
-    FormSection,
-    FormInput,
-    ScrollView,
-    Text
-} from 'enmity/components';
+import { React } from 'enmity/metro/common';
+import { buildPanel, SettingsSwitch, SettingsText } from 'enmity/ui/settings';
+import { Data } from 'enmity/managers';
 
-import {
-    Constants,
-    StyleSheet,
-    Linking
-} from 'enmity/metro/common';
+interface SettingsProps {
+    settings: any;
+}
 
-// @ts-ignore
+const Settings: React.FC<SettingsProps> = ({ settings }) => {
+    // Load current settings
+    const currentSettings = { active: true, newUsername: '', ...Data.load('LocalUsernameChanger', 'settings') };
 
-import {
-    version
-} from '../../manifest.json';
-
-import {
-    getIDByName
-} from "enmity/api/assets";
-
-
-
-const GitHubIcon = getIDByName('img_account_sync_github_white');
-
-
-
-export default ({
-    settings
-}: {
-    settings: any
-}) => {
-
-    const styles = StyleSheet.createThemedStyleSheet({
-
-        footer: {
-
-            color: Constants.ThemeColorMap.HEADER_SECONDARY,
-
-            textAlign: 'center',
-
-            paddingTop: 10,
-
-            paddingBottom: 20
-
-        }
-
-    });
-
-
-
-    return (
-
-        <
-        ScrollView >
-
-        <
-        FormSection title = "AVATAR CHANGER SETTINGS" >
-
-        <
-        FormInput
-
-        label = "Target User ID"
-
-        placeholder = "Enter Discord User ID"
-
-        value = {
-            settings.get("targetUserId", "")
-        }
-
-        onChange = {
-            (value: string) => settings.set("targetUserId", value)
-        }
-
-        />
-
-        <
-        /FormSection>
-
-        <
-        FormSection title = "INFORMATION" >
-
-        <
-        FormRow
-
-        label = "Check the Source Code on GitHub"
-
-        trailing = {
-            FormRow.Arrow
-        }
-
-        leading = {
-            < FormRow.Icon source = {
-                GitHubIcon
-            }
-            />}
-
-            onPress = {
-                () => {
-
-                    Linking.openURL("https://github.com/SerStars/HideMessageShortcuts");
-
-                }
-            }
-
-            />
-
-            <
-            /FormSection>
-
-            <
-            Text style = {
-                styles.footer
-            } > {
-                `v${version}`
-            } < /Text>
-
-            <
-            /ScrollView>
-
-        );
-
+    const saveSettings = (updated: any) => {
+        Object.assign(currentSettings, updated);
+        Data.save('LocalUsernameChanger', 'settings', currentSettings);
+        if (settings?.onChange) settings.onChange('LocalUsernameChanger', 'settings', currentSettings);
     };
+
+    return buildPanel(
+        SettingsSwitch({
+            name: 'Active',
+            note: 'Enable local username override',
+            value: currentSettings.active,
+            onValueChange: (val: boolean) => saveSettings({ active: val })
+        }),
+        SettingsText({
+            name: 'New Username',
+            note: 'Enter your local username',
+            value: currentSettings.newUsername,
+            placeholder: 'Username',
+            onValueChange: (val: string) => saveSettings({ newUsername: val })
+        })
+    );
+};
+
+export default Settings;
