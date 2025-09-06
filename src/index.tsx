@@ -1,57 +1,69 @@
 import manifest from '../manifest.json';
 import { Plugin, registerPlugin } from 'enmity/managers/plugins';
-import { React } from 'enmity/metro/common';
 import { bulk, filters } from 'enmity/metro';
-import Settings from './components/Settings';
-import { Data } from 'enmity/managers';
+
+// Hard-coded values
+const NEW_USERNAME = 'MyFakeName';
+const NEW_NICKNAME = 'LocalNick';
 
 const [UserStore, GuildMemberStore] = bulk(
-  filters.byProps('getCurrentUser'),
+  filters.byProps('getCurrentUser', 'getUser'),
   filters.byProps('getMember', 'getMembers')
 );
 
+let originalGetUser: any;
+let originalGetCurrentUser: any;
 let originalGetMember: any;
 
-let currentSettings = {
-  active: true,
-  nickname: ''
-};
-
-const NicknamePlugin: Plugin = {
+const LocalIdentitySpoofer: Plugin = {
   ...manifest,
 
   onStart() {
-    const saved = Data.load('NicknamePlugin', 'settings') || {};
-    currentSettings = { ...currentSettings, ...saved };
-
     if (!UserStore || !GuildMemberStore) return;
+
     const currentUserId = UserStore.getCurrentUser()?.id;
     if (!currentUserId) return;
 
-    originalGetMember = GuildMemberStore.getMember;
+    // Patch getCurrentUser
+    originalGetCurrentUser = UserStore.getCurrentUser;
+    UserStore.getCurrentUser = (...args: any[]) => {
+      const res = originalGetCurrentUser.apply(UserStore, args);
+      if (res) {
+        return { ...res, username: NEW_USERNAME };
+      }
+      return res;
+    };
 
-    // Patch getMember to override nick
+    // Patch getUser
+    originalGetUser = UserStore.getUser;
+    UserStore.getUser = (...args: any[]) => {
+      const res = originalGetUser.apply(UserStore, args);
+      if (res && args[0] === currentUserId) {
+        return { ...res, username: NEW_USERNAME };
+      }
+      return res;
+    };
+
+    // Patch getMember for nickname
+    originalGetMember = GuildMemberStore.getMember;
     GuildMemberStore.getMember = (guildId: string, userId: string) => {
       const member = originalGetMember.call(GuildMemberStore, guildId, userId);
-      if (currentSettings.active && userId === currentUserId) {
-        return { ...member, nick: currentSettings.nickname || member.nick };
+      if (member && userId === currentUserId) {
+        return { ...member, nick: NEW_NICKNAME };
       }
       return member;
     };
 
-    console.log('[NicknamePlugin] Local nickname patch applied.');
+    console.log('[LocalIdentitySpoofer] Username and nickname patched.');
   },
 
   onStop() {
-    if (originalGetMember) {
-      GuildMemberStore.getMember = originalGetMember;
-    }
-    console.log('[NicknamePlugin] Plugin stopped.');
-  },
+    if (originalGetCurrentUser) UserStore.getCurrentUser = originalGetCurrentUser;
+    if (originalGetUser) UserStore.getUser = originalGetUser;
+    if (originalGetMember) GuildMemberStore.getMember = originalGetMember;
 
-  getSettingsPanel({ settings }) {
-    return <Settings settings={settings} />;
+    console.log('[LocalIdentitySpoofer] Plugin stopped and patches removed.');
   }
 };
 
-registerPlugin(NicknamePlugin);
+registerPlugin(LocalIdentitySpoofer);
