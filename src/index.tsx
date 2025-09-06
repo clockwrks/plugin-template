@@ -1,92 +1,98 @@
-import { Plugin, Patcher, Toasts, Data } from 'enmity/managers';
+import { Plugin, registerPlugin } from 'enmity/managers/plugins';
+import { create } from 'enmity/patcher';
 import { getByProps } from 'enmity/metro';
-import { buildSettingsPanel, SettingsSwitch, SettingsText } from 'enmity/ui/settings';
+import manifest from '../manifest.json';
 
-export default class Imposter extends Plugin {
-    settings = {
-        active: true,
-        subjectUserId: '',
-        targetUserId: ''
-    };
+const Patcher = create('FullProfileSpoofer');
 
-    UserStore = getByProps('getUser', 'getCurrentUser');
-    UserProfileStore = getByProps('getUserProfile');
-    PresenceStore = getByProps('getPrimaryActivity');
-    GuildMemberStore = getByProps('getMember');
+// Spoofed values
+const CUSTOM_NAME = '50cczip';
+const CUSTOM_NICK = '50cczip';
+const CUSTOM_BIO = `https://nohello.net/
+My DMs are always open
+Do NOT DM me for
+- Ingame suggestions
+- Discord suggestions
+- Bug reports`;
+const CUSTOM_AVATAR_HASH = '64d95fd6056fd65505ac10456b3ebc30';
+const CUSTOM_BANNER_HASH = 'f1c1fb11dd06c143e9761c837b610041';
+const AVATAR_IS_GIF = false;
 
-    start() {
-        this.loadSettings();
-        if (this.settings.active) this.loadPatches();
-        Toasts.show('Imposter plugin started (client-side only).');
-    }
+const FullProfileSpoofer: Plugin = {
+    ...manifest,
 
-    stop() {
+    onStart() {
+        const UserStore = getByProps('getCurrentUser', 'getUser');
+        const UserProfileStore = getByProps('getUserProfile', 'getProfiles');
+        const GuildMemberStore = getByProps('getMember', 'getMembers');
+
+        if (!UserStore) return;
+
+        const getAvatarUrl = (userId: string, hash: string) =>
+            `https://cdn.discordapp.com/avatars/${userId}/${hash}${AVATAR_IS_GIF ? '.gif' : '.png'}?size=1024`;
+
+        // Patch getUser to spoof username, avatar, banner
+        Patcher.after(UserStore, 'getUser', (_self, [id], res) => {
+            if (!res) return res;
+            if (id === UserStore.getCurrentUser()?.id) {
+                return {
+                    ...res,
+                    username: CUSTOM_NAME,
+                    avatar: CUSTOM_AVATAR_HASH,
+                    banner: CUSTOM_BANNER_HASH,
+                    getAvatarURL: () => getAvatarUrl(id, CUSTOM_AVATAR_HASH),
+                };
+            }
+            return res;
+        });
+
+        // Patch getCurrentUser similarly
+        Patcher.after(UserStore, 'getCurrentUser', (_self, args, res) => {
+            if (!res) return res;
+            return {
+                ...res,
+                username: CUSTOM_NAME,
+                avatar: CUSTOM_AVATAR_HASH,
+                banner: CUSTOM_BANNER_HASH,
+                getAvatarURL: () => getAvatarUrl(res.id, CUSTOM_AVATAR_HASH),
+            };
+        });
+
+        // Patch bio/About Me
+        if (UserProfileStore) {
+            Patcher.after(UserProfileStore, 'getUserProfile', (_self, [id], res) => {
+                if (!res) return res;
+                if (id === UserStore.getCurrentUser()?.id) {
+                    return {
+                        ...res,
+                        bio: CUSTOM_BIO,
+                    };
+                }
+                return res;
+            });
+        }
+
+        // Patch nicknames
+        if (GuildMemberStore) {
+            Patcher.after(GuildMemberStore, 'getMember', (_self, [guildId, userId], res) => {
+                if (!res) return res;
+                if (userId === UserStore.getCurrentUser()?.id) {
+                    return {
+                        ...res,
+                        nick: CUSTOM_NICK,
+                    };
+                }
+                return res;
+            });
+        }
+
+        console.log('[FullProfileSpoofer] Spoofing applied.');
+    },
+
+    onStop() {
         Patcher.unpatchAll();
-        Toasts.show('Imposter plugin stopped.');
-    }
+        console.log('[FullProfileSpoofer] Stopped.');
+    },
+};
 
-    loadPatches() {
-        Patcher.after('spoof-user', this.UserStore, 'getUser', (_, [id], res) => {
-            if (id === this.settings.targetUserId) {
-                const subject = this.UserStore.getUser(this.settings.subjectUserId);
-                return { ...res, username: subject.username, avatar: subject.avatar, globalName: subject.globalName };
-            }
-        });
-
-        Patcher.after('spoof-user-profile', this.UserProfileStore, 'getUserProfile', (_, [id], res) => {
-            if (id === this.settings.targetUserId) {
-                const subject = this.UserProfileStore.getUserProfile(this.settings.subjectUserId);
-                return { ...res, badges: subject.badges, bio: subject.bio, pronouns: subject.pronouns, themeColor: subject.themeColor };
-            }
-        });
-
-        Patcher.after('spoof-user-status', this.PresenceStore, 'getPrimaryActivity', (_, [id], res) => {
-            if (id === this.settings.targetUserId) {
-                return this.PresenceStore.getPrimaryActivity(this.settings.subjectUserId) || res;
-            }
-        });
-
-        Patcher.after('spoof-user-guild', this.GuildMemberStore, 'getMember', (_, [guildId, id], res) => {
-            if (id === this.settings.targetUserId) {
-                const subject = this.GuildMemberStore.getMember(guildId, this.settings.subjectUserId);
-                return { ...res, nick: subject?.nick || res.nick };
-            }
-        });
-    }
-
-    loadSettings() {
-        const saved = Data.load('Imposter', 'settings') || {};
-        this.settings = { ...this.settings, ...saved };
-    }
-
-    saveSettings() {
-        Data.save('Imposter', 'settings', this.settings);
-        Patcher.unpatchAll();
-        if (this.settings.active) this.loadPatches();
-    }
-
-    getSettingsPanel() {
-        return buildSettingsPanel(
-            SettingsSwitch({
-                name: 'Active',
-                note: 'Enable the plugin',
-                value: this.settings.active,
-                onValueChange: (val: boolean) => { this.settings.active = val; this.saveSettings(); }
-            }),
-            SettingsText({
-                name: 'Subject User ID',
-                note: 'User to copy identity from',
-                value: this.settings.subjectUserId,
-                placeholder: 'User ID',
-                onValueChange: (val: string) => { this.settings.subjectUserId = val; this.saveSettings(); }
-            }),
-            SettingsText({
-                name: 'Target User ID',
-                note: 'User to copy identity to (client-side only)',
-                value: this.settings.targetUserId,
-                placeholder: 'User ID',
-                onValueChange: (val: string) => { this.settings.targetUserId = val; this.saveSettings(); }
-            })
-        );
-    }
-}
+registerPlugin(FullProfileSpoofer);
