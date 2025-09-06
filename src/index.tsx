@@ -15,6 +15,7 @@ const UsernameChanger: Plugin = {
   onStart() {
     const { UserStore } = getByProps('getCurrentUser', 'getUser');
     const currentUser = UserStore.getCurrentUser();
+    console.log(currentUser)
     if (!currentUser) return;
 
     const currentUserId = currentUser.id;
