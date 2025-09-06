@@ -1,35 +1,56 @@
 import manifest from '../manifest.json';
 import { Plugin, registerPlugin } from 'enmity/managers/plugins';
+import { React } from 'enmity/metro/common';
 import { bulk, filters } from 'enmity/metro';
+import Settings from './components/Settings';
+import { Data } from 'enmity/managers';
 
 const [UserStore, GuildMemberStore] = bulk(
   filters.byProps('getCurrentUser'),
   filters.byProps('getMember', 'getMembers')
 );
 
+let originalGetMember: any;
+
+let currentSettings = {
+  active: true,
+  nickname: ''
+};
+
 const NicknamePlugin: Plugin = {
   ...manifest,
 
   onStart() {
-    // Patch GuildMemberStore locally to override your nick
-    const currentUserId = UserStore.getCurrentUser()?.id;
+    const saved = Data.load('NicknamePlugin', 'settings') || {};
+    currentSettings = { ...currentSettings, ...saved };
 
-    if (currentUserId && GuildMemberStore) {
-      const originalGetMember = GuildMemberStore.getMember;
-      GuildMemberStore.getMember = (guildId: string, userId: string) => {
-        const member = originalGetMember.call(GuildMemberStore, guildId, userId);
-        if (userId === currentUserId) {
-          return { ...member, nick: 'works' }; // Local override
-        }
-        return member;
-      };
-      console.log('NicknamePlugin started: local nickname overridden.');
-    }
+    if (!UserStore || !GuildMemberStore) return;
+    const currentUserId = UserStore.getCurrentUser()?.id;
+    if (!currentUserId) return;
+
+    originalGetMember = GuildMemberStore.getMember;
+
+    // Patch getMember to override nick
+    GuildMemberStore.getMember = (guildId: string, userId: string) => {
+      const member = originalGetMember.call(GuildMemberStore, guildId, userId);
+      if (currentSettings.active && userId === currentUserId) {
+        return { ...member, nick: currentSettings.nickname || member.nick };
+      }
+      return member;
+    };
+
+    console.log('[NicknamePlugin] Local nickname patch applied.');
   },
 
   onStop() {
-    // Cleanup would restore original methods if needed
-    console.log(`The '${manifest.name}' plugin has been unloaded.`);
+    if (originalGetMember) {
+      GuildMemberStore.getMember = originalGetMember;
+    }
+    console.log('[NicknamePlugin] Plugin stopped.');
+  },
+
+  getSettingsPanel({ settings }) {
+    return <Settings settings={settings} />;
   }
 };
 

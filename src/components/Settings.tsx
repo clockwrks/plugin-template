@@ -1,36 +1,36 @@
 import { React } from 'enmity/metro/common';
-import { buildPanel, SettingsSwitch, SettingsText } from 'enmity/ui/settings';
+import { buildPanel, SettingsText, SettingsSwitch } from 'enmity/ui/settings';
 import { Data } from 'enmity/managers';
 
 interface SettingsProps {
-    settings: any;
+  settings: any;
 }
 
 const Settings: React.FC<SettingsProps> = ({ settings }) => {
-    // Load current settings
-    const currentSettings = { active: true, newUsername: '', ...Data.load('LocalUsernameChanger', 'settings') };
+  const saved = Data.load('NicknamePlugin', 'settings') || { active: true, nickname: '' };
+  const currentSettings = { ...saved };
 
-    const saveSettings = (updated: any) => {
-        Object.assign(currentSettings, updated);
-        Data.save('LocalUsernameChanger', 'settings', currentSettings);
-        if (settings?.onChange) settings.onChange('LocalUsernameChanger', 'settings', currentSettings);
-    };
+  const saveSettings = (updated: any) => {
+    Object.assign(currentSettings, updated);
+    Data.save('NicknamePlugin', 'settings', currentSettings);
+    if (settings?.onChange) settings.onChange('NicknamePlugin', 'settings', currentSettings);
+  };
 
-    return buildPanel(
-        SettingsSwitch({
-            name: 'Active',
-            note: 'Enable local username override',
-            value: currentSettings.active,
-            onValueChange: (val: boolean) => saveSettings({ active: val })
-        }),
-        SettingsText({
-            name: 'New Username',
-            note: 'Enter your local username',
-            value: currentSettings.newUsername,
-            placeholder: 'Username',
-            onValueChange: (val: string) => saveSettings({ newUsername: val })
-        })
-    );
+  return buildPanel(
+    SettingsSwitch({
+      name: 'Active',
+      note: 'Enable local nickname override',
+      value: currentSettings.active,
+      onValueChange: (val: boolean) => saveSettings({ active: val })
+    }),
+    SettingsText({
+      name: 'Nickname',
+      note: 'Enter your local nickname',
+      value: currentSettings.nickname,
+      placeholder: 'Nickname',
+      onValueChange: (val: string) => saveSettings({ nickname: val })
+    })
+  );
 };
 
 export default Settings;
