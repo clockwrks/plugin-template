@@ -5,27 +5,28 @@ import { bulk, filters } from 'enmity/metro';
 const NEW_USERNAME = 'MyFakeName';
 const NEW_NICKNAME = 'LocalNick';
 
-const [UserStore, GuildMemberStore] = bulk(
+const [UserStore, GuildMemberStore, UserProfileStore] = bulk(
   filters.byProps('getCurrentUser', 'getUser'),
-  filters.byProps('getMember', 'getMembers')
+  filters.byProps('getMember', 'getMembers'),
+  filters.byProps('getUserProfile', 'getProfiles')
 );
 
 let originalGetUser: any;
 let originalGetCurrentUser: any;
 let originalGetMember: any;
+let originalGetUserProfile: any;
 
 const LocalIdentitySpoofer: Plugin = {
   ...manifest,
 
   onStart() {
-    if (!UserStore || !GuildMemberStore) return;
+    if (!UserStore || !GuildMemberStore || !UserProfileStore) return;
 
-    // Wait until getCurrentUser() returns a valid user
     const interval = setInterval(() => {
       const currentUser = UserStore.getCurrentUser?.();
       if (!currentUser) return;
-
       clearInterval(interval);
+
       const currentUserId = currentUser.id;
 
       // Patch getCurrentUser
@@ -58,14 +59,26 @@ const LocalIdentitySpoofer: Plugin = {
         return member;
       };
 
-      console.log('[LocalIdentitySpoofer] Username and nickname patched safely.');
-    }, 100); // check every 100ms
+      // Patch UserProfileStore for display name in UI
+      originalGetUserProfile = UserProfileStore.getUserProfile;
+      UserProfileStore.getUserProfile = (_self: any, [userId]: any) => {
+        const profile = originalGetUserProfile?.call(UserProfileStore, _self, [userId]);
+        if (!profile) return profile;
+        if (userId === currentUserId) {
+          return { ...profile, globalName: NEW_USERNAME };
+        }
+        return profile;
+      };
+
+      console.log('[LocalIdentitySpoofer] Username and display name patched safely.');
+    }, 100);
   },
 
   onStop() {
     if (originalGetCurrentUser) UserStore.getCurrentUser = originalGetCurrentUser;
     if (originalGetUser) UserStore.getUser = originalGetUser;
     if (originalGetMember) GuildMemberStore.getMember = originalGetMember;
+    if (originalGetUserProfile) UserProfileStore.getUserProfile = originalGetUserProfile;
 
     console.log('[LocalIdentitySpoofer] Plugin stopped and patches removed.');
   }
