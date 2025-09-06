@@ -2,90 +2,107 @@ import manifest from '../manifest.json';
 import { Plugin, registerPlugin } from 'enmity/managers/plugins';
 import { bulk, filters } from 'enmity/metro';
 
-// Hard-coded values
-const NEW_USERNAME = 'MyFakeName';
-const NEW_NICKNAME = 'LocalNick';
-const NEW_AVATAR_HASH = 'b23c9146bbfafea6501dcf6d33197731'; // replace with your avatar hash
-const AVATAR_IS_GIF = false;
+const DEFAULT_SETTINGS = {
+  active: true,
+  subjectUserId: '748092773579882597',
+  targetUserId: '378986339007201290'
+};
 
-const [UserStore, GuildMemberStore] = bulk(
+let settings = { ...DEFAULT_SETTINGS };
+
+// Stores
+const [UserStore, UserProfileStore, PresenceStore, GuildMemberStore] = bulk(
   filters.byProps('getCurrentUser', 'getUser'),
-  filters.byProps('getMember', 'getMembers')
+  filters.byProps('getUserProfile', 'getProfiles'),
+  filters.byProps('getPrimaryActivity'),
+  filters.byProps('getMember')
 );
 
 let originalGetUser: any;
-let originalGetCurrentUser: any;
+let originalGetUserProfile: any;
+let originalGetPrimaryActivity: any;
 let originalGetMember: any;
 
-// Helper to generate avatar URL
-const getAvatarUrl = (userId: string, hash: string) =>
-  `https://cdn.discordapp.com/avatars/${userId}/${hash}${AVATAR_IS_GIF ? '.gif' : '.png'}?size=1024`;
-
-const LocalIdentitySpoofer: Plugin = {
+const Imposter: Plugin = {
   ...manifest,
 
   onStart() {
-    if (!UserStore || !GuildMemberStore) return;
+    if (!settings.active) return;
+    if (!UserStore || !UserProfileStore || !PresenceStore || !GuildMemberStore) return;
 
-    // Wait until getCurrentUser() returns a valid user
     const interval = setInterval(() => {
       const currentUser = UserStore.getCurrentUser?.();
       if (!currentUser) return;
-
       clearInterval(interval);
-      const currentUserId = currentUser.id;
 
-      // Patch getCurrentUser
-      originalGetCurrentUser = UserStore.getCurrentUser;
-      UserStore.getCurrentUser = (...args: any[]) => {
-        const res = originalGetCurrentUser?.apply(UserStore, args);
-        if (!res) return res;
-        return {
-          ...res,
-          username: NEW_USERNAME,
-          avatar: NEW_AVATAR_HASH,
-          getAvatarURL: () => getAvatarUrl(currentUserId, NEW_AVATAR_HASH)
-        };
-      };
+      const targetId = settings.targetUserId;
+      const subjectId = settings.subjectUserId;
 
       // Patch getUser
       originalGetUser = UserStore.getUser;
-      UserStore.getUser = (...args: any[]) => {
-        const res = originalGetUser?.apply(UserStore, args);
+      UserStore.getUser = (userId: string) => {
+        const res = originalGetUser?.call(UserStore, userId);
         if (!res) return res;
-        if (args[0] === currentUserId) {
-          return {
-            ...res,
-            username: NEW_USERNAME,
-            avatar: NEW_AVATAR_HASH,
-            getAvatarURL: () => getAvatarUrl(currentUserId, NEW_AVATAR_HASH)
-          };
+        if (userId === targetId) {
+          const subject = UserStore.getUser(subjectId);
+          if (!subject) return res;
+          return { ...res, username: subject.username, avatar: subject.avatar, banner: subject.banner };
         }
         return res;
       };
 
-      // Patch getMember for nickname
+      // Patch getUserProfile
+      originalGetUserProfile = UserProfileStore.getUserProfile;
+      UserProfileStore.getUserProfile = (_self: any, [userId]: any) => {
+        const res = originalGetUserProfile?.call(UserProfileStore, _self, [userId]);
+        if (!res) return res;
+        if (userId === targetId) {
+          const subjectProfile = UserProfileStore.getUserProfile(subjectId);
+          if (!subjectProfile) return res;
+          return { ...res, bio: subjectProfile.bio, badges: subjectProfile.badges, themeColor: subjectProfile.themeColor };
+        }
+        return res;
+      };
+
+      // Patch presence (best-effort)
+      originalGetPrimaryActivity = PresenceStore.getPrimaryActivity;
+      PresenceStore.getPrimaryActivity = (_self: any, userId: string) => {
+        const res = originalGetPrimaryActivity?.call(PresenceStore, _self, userId);
+        if (userId === targetId) {
+          return PresenceStore.getPrimaryActivity(subjectId) || res;
+        }
+        return res;
+      };
+
+      // Patch guild member
       originalGetMember = GuildMemberStore.getMember;
       GuildMemberStore.getMember = (guildId: string, userId: string) => {
         const member = originalGetMember?.call(GuildMemberStore, guildId, userId);
         if (!member) return member;
-        if (userId === currentUserId) {
-          return { ...member, nick: NEW_NICKNAME };
+        if (userId === targetId) {
+          const subjectMember = GuildMemberStore.getMember(guildId, subjectId);
+          return { ...member, nick: subjectMember?.nick || member.nick };
         }
         return member;
       };
 
-      console.log('[LocalIdentitySpoofer] Username, nickname, and avatar patched safely.');
+      console.log('[Imposter] Spoofing applied.');
     }, 100);
   },
 
   onStop() {
-    if (originalGetCurrentUser) UserStore.getCurrentUser = originalGetCurrentUser;
     if (originalGetUser) UserStore.getUser = originalGetUser;
+    if (originalGetUserProfile) UserProfileStore.getUserProfile = originalGetUserProfile;
+    if (originalGetPrimaryActivity) PresenceStore.getPrimaryActivity = originalGetPrimaryActivity;
     if (originalGetMember) GuildMemberStore.getMember = originalGetMember;
 
-    console.log('[LocalIdentitySpoofer] Plugin stopped and patches removed.');
+    console.log('[Imposter] Spoofing removed.');
+  },
+
+  getSettingsPanel() {
+    // Minimal settings panel
+    return null;
   }
 };
 
-registerPlugin(LocalIdentitySpoofer);
+registerPlugin(Imposter);
