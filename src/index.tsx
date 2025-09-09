@@ -1,108 +1,64 @@
-import manifest from '../manifest.json';
-import { Plugin, registerPlugin } from 'enmity/managers/plugins';
-import { bulk, filters } from 'enmity/metro';
+import manifest from '../manifest.json'
+import { Plugin, registerPlugin } from 'enmity/managers/plugins'
+import { bulk, filters } from 'enmity/metro'
 
-const DEFAULT_SETTINGS = {
-  active: true,
-  subjectUserId: '748092773579882597',
-  targetUserId: '378986339007201290'
-};
+const FAKE_BADGES = [
+  {
+    id: 'nitro',
+    description: 'Nitro',
+    icon: 'https://discord.com/assets/2ba85e8026a861c81b0f50d41f381c3b.svg',
+  },
+  {
+    id: 'early',
+    description: 'Early Supporter',
+    icon: 'https://discord.com/assets/23e59d799436a73c024819f84ea0b627.svg',
+  },
+  {
+    id: 'hypesquad-bravery',
+    description: 'HypeSquad Bravery',
+    icon: 'https://discord.com/assets/efcc751513ec434ea4275ecda4f61136.svg',
+  }
+]
 
-let settings = { ...DEFAULT_SETTINGS };
+const [UserProfileStore] = bulk(
+  filters.byProps('getUserProfile')
+)
 
-// Stores
-const [UserStore, UserProfileStore, PresenceStore, GuildMemberStore] = bulk(
-  filters.byProps('getCurrentUser', 'getUser'),
-  filters.byProps('getUserProfile', 'getProfiles'),
-  filters.byProps('getPrimaryActivity'),
-  filters.byProps('getMember')
-);
+let originalGetUserProfile: any
 
-let originalGetUser: any;
-let originalGetUserProfile: any;
-let originalGetPrimaryActivity: any;
-let originalGetMember: any;
-
-const Imposter: Plugin = {
+const BadgeSpoofer: Plugin = {
   ...manifest,
 
   onStart() {
-    if (!settings.active) return;
-    if (!UserStore || !UserProfileStore || !PresenceStore || !GuildMemberStore) return;
+    if (!UserProfileStore) return
 
-    const interval = setInterval(() => {
-      const currentUser = UserStore.getCurrentUser?.();
-      if (!currentUser) return;
-      clearInterval(interval);
+    originalGetUserProfile = UserProfileStore.getUserProfile
 
-      const targetId = settings.targetUserId;
-      const subjectId = settings.subjectUserId;
+    UserProfileStore.getUserProfile = (...args: any[]) => {
+      const res = originalGetUserProfile?.apply(UserProfileStore, args)
+      if (!res) return res
 
-      // Patch getUser
-      originalGetUser = UserStore.getUser;
-      UserStore.getUser = (userId: string) => {
-        const res = originalGetUser?.call(UserStore, userId);
-        if (!res) return res;
-        if (userId === targetId) {
-          const subject = UserStore.getUser(subjectId);
-          if (!subject) return res;
-          return { ...res, username: subject.username, avatar: subject.avatar, banner: subject.banner };
+      // only spoof your own profile
+      const myId = UserProfileStore.getUserProfile?.().userId
+      if (args[0] === myId) {
+        return {
+          ...res,
+          badges: [...(res.badges || []), ...FAKE_BADGES]
         }
-        return res;
-      };
+      }
 
-      // Patch getUserProfile
-      originalGetUserProfile = UserProfileStore.getUserProfile;
-      UserProfileStore.getUserProfile = (_self: any, [userId]: any) => {
-        const res = originalGetUserProfile?.call(UserProfileStore, _self, [userId]);
-        if (!res) return res;
-        if (userId === targetId) {
-          const subjectProfile = UserProfileStore.getUserProfile(subjectId);
-          if (!subjectProfile) return res;
-          return { ...res, bio: subjectProfile.bio, badges: subjectProfile.badges, themeColor: subjectProfile.themeColor };
-        }
-        return res;
-      };
+      return res
+    }
 
-      // Patch presence (best-effort)
-      originalGetPrimaryActivity = PresenceStore.getPrimaryActivity;
-      PresenceStore.getPrimaryActivity = (_self: any, userId: string) => {
-        const res = originalGetPrimaryActivity?.call(PresenceStore, _self, userId);
-        if (userId === targetId) {
-          return PresenceStore.getPrimaryActivity(subjectId) || res;
-        }
-        return res;
-      };
-
-      // Patch guild member
-      originalGetMember = GuildMemberStore.getMember;
-      GuildMemberStore.getMember = (guildId: string, userId: string) => {
-        const member = originalGetMember?.call(GuildMemberStore, guildId, userId);
-        if (!member) return member;
-        if (userId === targetId) {
-          const subjectMember = GuildMemberStore.getMember(guildId, subjectId);
-          return { ...member, nick: subjectMember?.nick || member.nick };
-        }
-        return member;
-      };
-
-      console.log('[Imposter] Spoofing applied.');
-    }, 100);
+    console.log('[BadgeSpoofer] Fake badges applied locally.')
   },
 
   onStop() {
-    if (originalGetUser) UserStore.getUser = originalGetUser;
-    if (originalGetUserProfile) UserProfileStore.getUserProfile = originalGetUserProfile;
-    if (originalGetPrimaryActivity) PresenceStore.getPrimaryActivity = originalGetPrimaryActivity;
-    if (originalGetMember) GuildMemberStore.getMember = originalGetMember;
-
-    console.log('[Imposter] Spoofing removed.');
-  },
-
-  getSettingsPanel() {
-    // Minimal settings panel
-    return null;
+    if (originalGetUserProfile) {
+      UserProfileStore.getUserProfile = originalGetUserProfile
+    }
+    console.log('[BadgeSpoofer] Restored original profile store.')
   }
-};
+}
 
-registerPlugin(Imposter);
+registerPlugin(BadgeSpoofer)
