@@ -1,57 +1,53 @@
-import manifest from '../manifest.json';
-import { Plugin, registerPlugin } from 'enmity/managers/plugins';
-import { bulk, filters } from 'enmity/metro';
+import manifest from '../manifest.json'
+import { Plugin, registerPlugin } from 'enmity/managers/plugins'
+import { bulk, filters } from 'enmity/metro'
 
-const [UserProfileStore] = bulk(
-  filters.byProps('getUserProfile', 'getMutualGuilds')
-);
+const NEW_USERNAME = 'MyLocalName'
 
-const FAKE_BADGES = [
-  {
-    id: 'early',
-    description: 'Early Supporter',
-    icon: 'https://discord.com/assets/23e59d799436a73c024819f84ea0b627.svg'
-  }
-];
+const [UserStore] = bulk(
+  filters.byProps('getCurrentUser', 'getUser')
+)
 
-let originalGetUserProfile: any;
+let originalGetCurrentUser: any
+let originalGetUser: any
 
-const BadgeSpoofer: Plugin = {
+const UsernameSpoofer: Plugin = {
   ...manifest,
 
   onStart() {
-    if (!UserProfileStore) return;
+    if (!UserStore) return
 
-    originalGetUserProfile = UserProfileStore.getUserProfile;
+    const currentUserId = UserStore.getCurrentUser()?.id
+    if (!currentUserId) return
 
-    UserProfileStore.getUserProfile = (...args: any[]) => {
-      const res = originalGetUserProfile?.apply(UserProfileStore, args);
-      if (!res) return res;
+    // Patch getCurrentUser
+    originalGetCurrentUser = UserStore.getCurrentUser
+    UserStore.getCurrentUser = (...args: any[]) => {
+      const res = originalGetCurrentUser?.apply(UserStore, args)
+      if (!res) return res
+      return { ...res, username: NEW_USERNAME }
+    }
 
-      const currentUserId = res.userId;
-      // Only spoof yourself
-      if (currentUserId === UserProfileStore.getCurrentUserId?.()) {
-        return {
-          ...res,
-          badges: [
-            ...(res.badges || []),
-            ...FAKE_BADGES
-          ]
-        };
+    // Patch getUser (so your profile shows the spoof too)
+    originalGetUser = UserStore.getUser
+    UserStore.getUser = (...args: any[]) => {
+      const res = originalGetUser?.apply(UserStore, args)
+      if (!res) return res
+      if (args[0] === currentUserId) {
+        return { ...res, username: NEW_USERNAME }
       }
+      return res
+    }
 
-      return res;
-    };
-
-    console.log('[BadgeSpoofer] Started and patched safely.');
+    console.log('[UsernameSpoofer] Local username spoof active.')
   },
 
   onStop() {
-    if (originalGetUserProfile) {
-      UserProfileStore.getUserProfile = originalGetUserProfile;
-    }
-    console.log('[BadgeSpoofer] Stopped and restored.');
-  }
-};
+    if (originalGetCurrentUser) UserStore.getCurrentUser = originalGetCurrentUser
+    if (originalGetUser) UserStore.getUser = originalGetUser
 
-registerPlugin(BadgeSpoofer);
+    console.log('[UsernameSpoofer] Restored original functions.')
+  }
+}
+
+registerPlugin(UsernameSpoofer)
