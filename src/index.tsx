@@ -1,53 +1,69 @@
-import manifest from '../manifest.json'
-import { Plugin, registerPlugin } from 'enmity/managers/plugins'
-import { bulk, filters } from 'enmity/metro'
+import manifest from '../manifest.json';
+import { Plugin, registerPlugin } from 'enmity/managers/plugins';
+import { bulk, filters } from 'enmity/metro';
 
-const NEW_USERNAME = 'MyLocalName'
+// Hard-coded values
+const NEW_USERNAME = 'MyFakeName';
+const NEW_NICKNAME = 'LocalNick';
 
-const [UserStore] = bulk(
-  filters.byProps('getCurrentUser', 'getUser')
-)
+const [UserStore, GuildMemberStore] = bulk(
+  filters.byProps('getCurrentUser', 'getUser'),
+  filters.byProps('getMember', 'getMembers')
+);
 
-let originalGetCurrentUser: any
-let originalGetUser: any
+let originalGetUser: any;
+let originalGetCurrentUser: any;
+let originalGetMember: any;
 
-const UsernameSpoofer: Plugin = {
+const LocalIdentitySpoofer: Plugin = {
   ...manifest,
 
   onStart() {
-    if (!UserStore) return
+    if (!UserStore || !GuildMemberStore) return;
 
-    const currentUserId = UserStore.getCurrentUser()?.id
-    if (!currentUserId) return
+    const currentUserId = UserStore.getCurrentUser()?.id;
+    if (!currentUserId) return;
 
     // Patch getCurrentUser
-    originalGetCurrentUser = UserStore.getCurrentUser
+    originalGetCurrentUser = UserStore.getCurrentUser;
     UserStore.getCurrentUser = (...args: any[]) => {
-      const res = originalGetCurrentUser?.apply(UserStore, args)
-      if (!res) return res
-      return { ...res, username: NEW_USERNAME }
-    }
-
-    // Patch getUser (so your profile shows the spoof too)
-    originalGetUser = UserStore.getUser
-    UserStore.getUser = (...args: any[]) => {
-      const res = originalGetUser?.apply(UserStore, args)
-      if (!res) return res
-      if (args[0] === currentUserId) {
-        return { ...res, username: NEW_USERNAME }
+      const res = originalGetCurrentUser.apply(UserStore, args);
+      if (res) {
+        return { ...res, username: NEW_USERNAME };
       }
-      return res
-    }
+      return res;
+    };
 
-    console.log('[UsernameSpoofer] Local username spoof active.')
+    // Patch getUser
+    originalGetUser = UserStore.getUser;
+    UserStore.getUser = (...args: any[]) => {
+      const res = originalGetUser.apply(UserStore, args);
+      if (res && args[0] === currentUserId) {
+        return { ...res, username: NEW_USERNAME };
+      }
+      return res;
+    };
+
+    // Patch getMember for nickname
+    originalGetMember = GuildMemberStore.getMember;
+    GuildMemberStore.getMember = (guildId: string, userId: string) => {
+      const member = originalGetMember.call(GuildMemberStore, guildId, userId);
+      if (member && userId === currentUserId) {
+        return { ...member, nick: NEW_NICKNAME };
+      }
+      return member;
+    };
+
+    console.log('[LocalIdentitySpoofer] Username and nickname patched.');
   },
 
   onStop() {
-    if (originalGetCurrentUser) UserStore.getCurrentUser = originalGetCurrentUser
-    if (originalGetUser) UserStore.getUser = originalGetUser
+    if (originalGetCurrentUser) UserStore.getCurrentUser = originalGetCurrentUser;
+    if (originalGetUser) UserStore.getUser = originalGetUser;
+    if (originalGetMember) GuildMemberStore.getMember = originalGetMember;
 
-    console.log('[UsernameSpoofer] Restored original functions.')
+    console.log('[LocalIdentitySpoofer] Plugin stopped and patches removed.');
   }
-}
+};
 
-registerPlugin(UsernameSpoofer)
+registerPlugin(LocalIdentitySpoofer);
