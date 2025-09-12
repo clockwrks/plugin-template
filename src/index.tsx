@@ -1,69 +1,81 @@
-import manifest from '../manifest.json';
-import { Plugin, registerPlugin } from 'enmity/managers/plugins';
-import { bulk, filters } from 'enmity/metro';
+import manifest from '../manifest.json'
+import { Plugin, registerPlugin } from 'enmity/managers/plugins'
+import { bulk, filters } from 'enmity/metro'
+import { React } from 'enmity/metro/common'
+import { TextInput } from 'enmity/components'
 
-// Hard-coded values
-const NEW_USERNAME = 'MyFakeName';
-const NEW_NICKNAME = 'LocalNick';
+const [MessageStore] = bulk(
+  filters.byProps('getMessage', 'getMessages')
+)
 
-const [UserStore, GuildMemberStore] = bulk(
-  filters.byProps('getCurrentUser', 'getUser'),
-  filters.byProps('getMember', 'getMembers')
-);
+let originalGetMessages: any
 
-let originalGetUser: any;
-let originalGetCurrentUser: any;
-let originalGetMember: any;
-
-const LocalIdentitySpoofer: Plugin = {
+const FakeMessagePlugin: Plugin = {
   ...manifest,
 
   onStart() {
-    if (!UserStore || !GuildMemberStore) return;
+    if (!MessageStore) return
 
-    const currentUserId = UserStore.getCurrentUser()?.id;
-    if (!currentUserId) return;
+    originalGetMessages = MessageStore.getMessages
 
-    // Patch getCurrentUser
-    originalGetCurrentUser = UserStore.getCurrentUser;
-    UserStore.getCurrentUser = (...args: any[]) => {
-      const res = originalGetCurrentUser.apply(UserStore, args);
-      if (res) {
-        return { ...res, username: NEW_USERNAME };
+    MessageStore.getMessages = (channelId: string) => {
+      const msgs = originalGetMessages?.call(MessageStore, channelId) || []
+
+      // Check if we already injected our fake message
+      if (!msgs.some(m => m.id === 'local-fake-message')) {
+        const fakeMessage = {
+          id: 'local-fake-message', // unique local id
+          channel_id: channelId,
+          author: {
+            id: this.settings?.get('userId', '123456789012345678'),
+            username: this.settings?.get('username', 'FakeUser'),
+            avatar: null
+          },
+          content: this.settings?.get('content', 'Hello! This is a local message.'),
+          timestamp: Date.now(),
+          edited_timestamp: null,
+          type: 0,
+          pinned: false,
+          mentions: [],
+          mention_roles: [],
+          attachments: [],
+          embeds: []
+        }
+        msgs.push(fakeMessage)
       }
-      return res;
-    };
 
-    // Patch getUser
-    originalGetUser = UserStore.getUser;
-    UserStore.getUser = (...args: any[]) => {
-      const res = originalGetUser.apply(UserStore, args);
-      if (res && args[0] === currentUserId) {
-        return { ...res, username: NEW_USERNAME };
-      }
-      return res;
-    };
+      return msgs
+    }
 
-    // Patch getMember for nickname
-    originalGetMember = GuildMemberStore.getMember;
-    GuildMemberStore.getMember = (guildId: string, userId: string) => {
-      const member = originalGetMember.call(GuildMemberStore, guildId, userId);
-      if (member && userId === currentUserId) {
-        return { ...member, nick: NEW_NICKNAME };
-      }
-      return member;
-    };
-
-    console.log('[LocalIdentitySpoofer] Username and nickname patched.');
+    console.log('[FakeMessagePlugin] Active: fake messages will appear locally.')
   },
 
   onStop() {
-    if (originalGetCurrentUser) UserStore.getCurrentUser = originalGetCurrentUser;
-    if (originalGetUser) UserStore.getUser = originalGetUser;
-    if (originalGetMember) GuildMemberStore.getMember = originalGetMember;
+    if (originalGetMessages) MessageStore.getMessages = originalGetMessages
+    console.log('[FakeMessagePlugin] Stopped: restored original message store.')
+  },
 
-    console.log('[LocalIdentitySpoofer] Plugin stopped and patches removed.');
+  getSettingsPanel({ settings }) {
+    return (
+      <React.Fragment>
+        <TextInput
+          placeholder='Target User ID'
+          value={settings.get('userId', '123456789012345678')}
+          onChange={(val: string) => settings.set('userId', val)}
+        />
+        <TextInput
+          placeholder='Fake username'
+          value={settings.get('username', 'FakeUser')}
+          onChange={(val: string) => settings.set('username', val)}
+        />
+        <TextInput
+          placeholder='Message content'
+          value={settings.get('content', 'Hello! This is a local message.')}
+          onChange={(val: string) => settings.set('content', val)}
+        />
+      </React.Fragment>
+    )
   }
-};
+}
 
-registerPlugin(LocalIdentitySpoofer);
+registerPlugin(FakeMessagePlugin)
