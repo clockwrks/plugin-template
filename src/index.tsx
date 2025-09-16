@@ -1,32 +1,58 @@
-import { api } from 'enmity-api';
+import { Plugin, registerPlugin } from 'enmity/managers/plugins';
+import { create } from 'enmity/patcher';
+import { bulk, filters } from 'enmity/metro';
 
-const {
-  patcher,
-  messages,
-} = api;
+const Patcher = create('ProfileSpoofer');
 
-let patches = [];
+const [
+  UserProfileStore
+] = bulk(
+  filters.byProps('getUserProfile')
+);
 
-export const onStart = (): void => {
-  // Find the message sending function to patch
-  const sendMessageFunction = messages.sendMessage;
+// ===================== CONFIGURATION =====================
+// IMPORTANT: Replace these with the actual user IDs you want to use.
+// You can get a user's ID by enabling Discord's "Developer Mode,"
+// right-clicking their profile, and selecting "Copy User ID."
 
-  // Apply a 'before' patch to the sendMessage function
-  const patch = patcher.before(sendMessageFunction, (args) => {
-    // The first argument of the sendMessage function is the message data.
-    // We access the content and change it to "worked".
-    const messageContent = args[1]; // Access the message content object
-    if (messageContent && messageContent.content) {
-      messageContent.content = 'worked';
-    }
-  });
+const TARGET_USER_ID = 'YOUR_TARGET_USER_ID_HERE';
+const REPLACEMENT_USER_ID = 'THE_REPLACEMENT_USER_ID_HERE';
 
-  // Store the patch so we can un-patch it later
-  patches.push(patch);
+// =========================================================
+
+const ProfileSpoofer: Plugin = {
+  name: 'ProfileSpoofer',
+  version: '1.0.0',
+  description: 'Redirects a user\'s profile view to another person\'s profile.',
+  author: 'Enmity-GPT',
+  
+  onStart() {
+    // Patch the getUserProfile function to redirect the profile view.
+    // The "instead" patch completely replaces the original function with our custom logic.
+    Patcher.instead(UserProfileStore, 'getUserProfile', (self, args, originalFunction) => {
+      // The first argument to getUserProfile is the user ID.
+      const userId = args[0];
+
+      // Check if the user ID being fetched matches our target user.
+      if (userId === TARGET_USER_ID) {
+        // If it's the target user, we call the original function with the
+        // replacement user ID instead of the original one.
+        console.log(`[ProfileSpoofer] Redirecting profile view for ${TARGET_USER_ID} to ${REPLACEMENT_USER_ID}.`);
+        return originalFunction.apply(self, [REPLACEMENT_USER_ID]);
+      }
+      
+      // If it's not the target user, we let the original function run as normal.
+      return originalFunction.apply(self, args);
+    });
+
+    console.log('[ProfileSpoofer] Plugin started.');
+  },
+
+  onStop() {
+    // Un-patch all applied patches to prevent memory leaks and other issues.
+    Patcher.unpatchAll();
+    console.log('[ProfileSpoofer] Plugin stopped.');
+  },
 };
 
-export const onStop = (): void => {
-  // Un-patch all applied patches to prevent memory leaks
-  patches.forEach(patch => patch());
-  patches = [];
-};
+registerPlugin(ProfileSpoofer);
