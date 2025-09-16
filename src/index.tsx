@@ -1,102 +1,57 @@
 import manifest from '../manifest.json'
 import { registerPlugin } from 'enmity/managers/plugins'
 import { bulk, filters } from 'enmity/metro'
-import * as React from 'react'
 import { Toasts } from 'enmity/modules/toast'
 
-const idAliasMap: Record<string, string> = {
-  '1117005234301050882': 'Alice (LOCAL ALIAS)',
-  '1327385107677319299': 'SupportBotAlias (LOCAL ALIAS)'
-}
-
-const DualProfileView: any = {
+const Workedifier: any = {
   ...manifest,
   onStart() {
-    Toasts.show('DualProfileView started')
-    const [UserProfileStore] = bulk(filters.byProps('getUserProfile'))
-    if (!UserProfileStore) return
+    Toasts.show('Workedifier started')
+    const [MessageActions] = bulk(filters.byProps('sendMessage', 'editMessage'))
+    if (!MessageActions) return
 
-    const origGet = UserProfileStore.getUserProfile
-    // patch getUserProfile to attach a clear localAlias object when available
+    const origSend = MessageActions.sendMessage
     // @ts-ignore
-    UserProfileStore.getUserProfile = function (id: string) {
-      const res = origGet.apply(this, arguments)
+    MessageActions.sendMessage = function () {
       try {
-        if (res && res.user && id && idAliasMap[id]) {
-          res.localAlias = {
-            label: 'LOCAL ALIAS VIEW',
-            alias: idAliasMap[id]
+        const args = Array.from(arguments)
+        // find the message payload argument (string or object with content)
+        for (let i = 0; i < args.length; i++) {
+          const a = args[i]
+          if (typeof a === 'string') {
+            if (a.startsWith('/')) break // leave commands intact
+            args[i] = workedifyString(a)
+            break
           }
-          // append a conspicuous marker to the display name so users cannot mistake it for official data
-          const marker = ' • [LOCAL ALIAS]'
-          if (res.user.username && !res.user.username.includes(marker)) {
-            res.user.username = res.user.username + marker
-          }
-          if (res.user.display_name && !res.user.display_name.includes(marker)) {
-            res.user.display_name = res.user.display_name + marker
+          if (a && typeof a === 'object' && 'content' in a && typeof a.content === 'string') {
+            if (a.content.startsWith('/')) break
+            // preserve other fields, only replace content
+            args[i] = Object.assign({}, a, { content: workedifyString(a.content) })
+            break
           }
         }
-      } catch (e) {}
-      return res
-    }
-    // try to patch profile modal render to inject a second panel if present
-    const [UserProfileModal] = bulk(filters.byProps('open', 'close', 'isOpen'))
-    if (UserProfileModal && UserProfileModal.prototype) {
-      const proto = UserProfileModal.prototype
-      if (!proto.__dualProfilePatched) {
-        const origRender = proto.render
-        proto.__dualProfilePatched = true
-        proto.render = function () {
-          const vnode = origRender.apply(this, arguments)
-          try {
-            // find props with profile data
-            const props = (this.props || this.state || {})
-            const profile = props.profile ?? (props.userId ? UserProfileStore.getUserProfile(props.userId) : null)
-            if (profile && profile.localAlias) {
-              const aliasPanel = React.createElement('div', {
-                style: {
-                  padding: 12,
-                  marginTop: 8,
-                  borderTop: '1px solid rgba(0,0,0,0.08)'
-                }
-              },
-              React.createElement('div', { style: { fontWeight: 700, marginBottom: 6 } }, profile.localAlias.label),
-              React.createElement('div', null, profile.localAlias.alias),
-              React.createElement('div', { style: { marginTop: 6, fontSize: 12, color: 'rgba(0,0,0,0.6)' } }, 'This is a local overlay only. IDs and original data remain unchanged.'))
-              // attempt to append aliasPanel to modal body if structure matches common patterns
-              const body = vnode && vnode.props && vnode.props.children
-              if (body) {
-                // naive injection: if children is array, push; else wrap
-                if (Array.isArray(body)) {
-                  body.push(aliasPanel)
-                } else if (body.props && Array.isArray(body.props.children)) {
-                  body.props.children.push(aliasPanel)
-                }
-              }
-            }
-          } catch (e) {}
-          return vnode
-        }
+        return origSend.apply(this, args)
+      } catch (e) {
+        return origSend.apply(this, arguments)
       }
     }
-    ;(this as any)._origGetUserProfile = origGet
-    ;(this as any)._origModalProto = UserProfileModal && UserProfileModal.prototype
+
+    ;(this as any)._origSend = origSend
   },
   onStop() {
-    Toasts.show('DualProfileView stopped')
-    try {
-      const [UserProfileStore] = bulk(filters.byProps('getUserProfile'))
-      if (UserProfileStore && (this as any)._origGetUserProfile) {
-        UserProfileStore.getUserProfile = (this as any)._origGetUserProfile
-      }
-      const proto = (this as any)._origModalProto
-      if (proto && proto.__dualProfilePatched) {
-        // cannot reliably restore original render if lost; best-effort: delete patched flag
-        delete proto.__dualProfilePatched
-      }
-    } catch (e) {}
+    Toasts.show('Workedifier stopped')
+    const [MessageActions] = bulk(filters.byProps('sendMessage'))
+    if (MessageActions && (this as any)._origSend) {
+      MessageActions.sendMessage = (this as any)._origSend
+    }
   }
 }
 
-registerPlugin(DualProfileView)
-export default DualProfileView
+function workedifyString(s: string): string {
+  // replace every word token with 'worked', keep whitespace and punctuation
+  // word defined as sequence of Unicode letters/digits/underscore
+  return s.replace(/[\p{L}\p{N}_]+/gu, 'worked')
+}
+
+registerPlugin(Workedifier)
+export default Workedifier
