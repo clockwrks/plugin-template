@@ -15,8 +15,8 @@ const [
 // You can get a user's ID by enabling Discord's "Developer Mode,"
 // right-clicking their profile, and selecting "Copy User ID."
 
-const TARGET_USER_ID = 'YOUR_TARGET_USER_ID_HERE';
-const REPLACEMENT_USER_ID = 'THE_REPLACEMENT_USER_ID_HERE';
+const TARGET_USER_ID = '383296127396610049';
+const REPLACEMENT_USER_ID = '1117005234301050882';
 
 // =========================================================
 
